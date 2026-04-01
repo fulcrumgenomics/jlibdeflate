@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  # -----------------------------------------------------------------------
+  # Build native library on each platform
+  # -----------------------------------------------------------------------
+  build-native:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux-x86_64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - os: macos-14
+            platform: osx-aarch64
+          - os: macos-14
+            platform: osx-x86_64
+            cross: true
+
+    name: Native (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+
+      - name: Build native library
+        run: ./gradlew buildNative
+        env:
+          JLIBDEFLATE_PLATFORM: ${{ matrix.platform }}
+
+      - name: Upload native library
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: native-${{ matrix.platform }}
+          path: src/main/resources/native/${{ matrix.platform }}/
+          retention-days: 3
+
+  # -----------------------------------------------------------------------
+  # Assemble fat JAR and publish release to Maven Central
+  # -----------------------------------------------------------------------
+  publish:
+    name: Publish Release
+    needs: build-native
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@0b6dd653ba04f4f93bf581ec31e66cbd7dcb644d # v4
+
+      - name: Download all native libraries
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: native-*
+          path: src/main/resources/native/
+          merge-multiple: false
+
+      - name: Arrange native libraries
+        run: |
+          set -euo pipefail
+          cd src/main/resources/native
+          for dir in native-*/; do
+            platform="${dir#native-}"
+            platform="${platform%/}"
+            mkdir -p "$platform"
+            cp -r "$dir"* "$platform/"
+            rm -rf "$dir"
+          done
+          for platform in linux-x86_64 linux-aarch64 osx-aarch64 osx-x86_64; do
+            lib=$(find "$platform" -name 'libjlibdeflate.*' -print -quit 2>/dev/null)
+            if [[ -z "$lib" ]]; then
+              echo "::error::Missing native library for $platform"
+              exit 1
+            fi
+            echo "Found: $lib"
+          done
+
+      - name: Verify version is not SNAPSHOT
+        run: |
+          VERSION=$(./gradlew -q currentVersion)
+          echo "Version: $VERSION"
+          if [[ "$VERSION" == *-SNAPSHOT* ]]; then
+            echo "::error::Release version must not be a SNAPSHOT: $VERSION"
+            exit 1
+          fi
+
+      - name: Publish to Maven Central
+        run: ./gradlew publishToSonatype closeAndReleaseSonatypeStagingRepositories
+        env:
+          SONATYPE_USER: ${{ secrets.SONATYPE_USER }}
+          SONATYPE_PASS: ${{ secrets.SONATYPE_PASS }}
+          PGP_SECRET: ${{ secrets.PGP_SECRET }}
+          PGP_PASSPHRASE: ${{ secrets.PGP_PASSPHRASE }}
+
+      - name: Upload release JAR
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-jar
+          path: build/libs/jlibdeflate-*.jar
+          retention-days: 3
+
+  # -----------------------------------------------------------------------
+  # Create GitHub Release
+  # -----------------------------------------------------------------------
+  github-release:
+    name: GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Download release JAR
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-jar
+          path: build/libs/
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Attach the main JAR (not -sources or -javadoc)
+          JAR=$(ls build/libs/jlibdeflate-${VERSION}.jar 2>/dev/null | head -1)
+          if [[ -z "$JAR" ]]; then
+            echo "::error::Release JAR not found for version $VERSION"
+            exit 1
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "$JAR"
