@@ -39,14 +39,15 @@ final class NativeLoader {
 
         String platform = detectPlatform();
         String libExtension = platform.startsWith("osx") ? "dylib" : platform.startsWith("linux") ? "so" : "dll";
-        String libName = "libjlibdeflate." + libExtension;
+        // Windows DLLs don't use the "lib" prefix; Linux/macOS shared libraries do
+        String libName = platform.startsWith("win") ? "jlibdeflate." + libExtension : "libjlibdeflate." + libExtension;
         String resourcePath = "/native/" + platform + "/" + libName;
 
         try (InputStream is = NativeLoader.class.getResourceAsStream(resourcePath)) {
             if (is == null) {
                 throw new UnsatisfiedLinkError("Native library not found in JAR at " + resourcePath
-                        + ". Supported platforms: linux-x86_64, linux-aarch64, osx-x86_64, osx-aarch64."
-                        + " Current platform: " + platform);
+                        + ". Supported platforms: linux-x86_64, linux-aarch64, osx-x86_64, osx-aarch64,"
+                        + " windows-x86_64. Current platform: " + platform);
             }
 
             // Use restrictive permissions to prevent TOCTOU attacks in shared /tmp
