@@ -23,6 +23,8 @@ jobs:
           - os: macos-14
             platform: osx-x86_64
             cross: true
+          - os: windows-latest
+            platform: windows-x86_64
 
     name: Native (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
@@ -97,9 +99,9 @@ jobs:
             cp -r "$dir"* "$platform/"
             rm -rf "$dir"
           done
-          # Verify all 4 platforms have a native library
-          for platform in linux-x86_64 linux-aarch64 osx-aarch64 osx-x86_64; do
-            lib=$(find "$platform" -name 'libjlibdeflate.*' -print -quit 2>/dev/null)
+          # Verify all 5 platforms have a native library
+          for platform in linux-x86_64 linux-aarch64 osx-aarch64 osx-x86_64 windows-x86_64; do
+            lib=$(find "$platform" -type f \( -name 'libjlibdeflate.*' -o -name 'jlibdeflate.dll' \) -print -quit 2>/dev/null)
             if [[ -z "$lib" ]]; then
               echo "::error::Missing native library for $platform"
               exit 1

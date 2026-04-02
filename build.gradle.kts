@@ -125,7 +125,15 @@ val buildNative by tasks.registering(Exec::class) {
 
     doLast {
         nativeOutputDir.mkdirs()
-        cmakeBuildDir.get().resolve(libName).copyTo(nativeOutputDir.resolve(libName), overwrite = true)
+        // MSVC multi-config generators put output in a Release/ subdirectory;
+        // single-config generators (Make, Ninja) put it directly in the build dir.
+        val builtLib = cmakeBuildDir.get().resolve(libName).let { direct ->
+            if (direct.exists()) direct
+            else cmakeBuildDir.get().resolve("Release").resolve(libName).also {
+                require(it.exists()) { "Built library not found at $direct or $it" }
+            }
+        }
+        builtLib.copyTo(nativeOutputDir.resolve(libName), overwrite = true)
     }
 }
 
