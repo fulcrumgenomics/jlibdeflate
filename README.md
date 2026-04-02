@@ -39,7 +39,7 @@ High-performance Java JNI bindings for [libdeflate](https://github.com/ebiggers/
 | Linux | aarch64 | Supported |
 | macOS | x86_64 | Supported |
 | macOS | aarch64 (Apple Silicon) | Supported |
-| Windows | x86_64 | Planned |
+| Windows | x86_64 | Supported |
 
 libdeflate automatically detects and uses the best available SIMD instructions at runtime.  A single binary per (OS, architecture) pair handles all CPU variants.
 
