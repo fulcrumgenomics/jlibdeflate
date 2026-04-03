@@ -42,12 +42,16 @@ The codebase has two layers: a C JNI layer and a Java API layer.
 - Direct `ByteBuffer` → `GetDirectBufferAddress` (zero-copy, no GC impact)
 - Heap `ByteBuffer` → Java-side extracts backing array, delegates to `byte[]` native method
 
+### CLI / Benchmark (`Main`, `LibdeflateBenchmark`)
+- **`Main`** — JAR entry point dispatcher. Routes `args[0]` to subcommands (currently just `benchmark`).
+- **`LibdeflateBenchmark`** — benchmarks libdeflate vs JDK zlib using real BGZF format (64KB blocks, raw DEFLATE). Tests three I/O modes (in-memory, read-only, read+write) and prints results in Unicode box-drawing tables. Run via `java -jar jlibdeflate.jar benchmark --input <file>`.
+
 ### Build Integration
-Gradle's `buildNative` task runs CMake configure + build, copies the output to `src/main/resources/native/{os}-{arch}/`, and `processResources` depends on it. The `JLIBDEFLATE_PLATFORM` env var can override platform detection for cross-compilation.
+Gradle's `buildNative` task runs CMake configure + build, copies the output to `src/main/resources/native/{os}-{arch}/`, and `processResources` depends on it. The `JLIBDEFLATE_PLATFORM` env var can override platform detection for cross-compilation. A `checkSubmodule` task runs before CMake and fails with a helpful message if the libdeflate submodule is not initialized.
 
 ## Prerequisites
 
-JDK 11+, CMake 3.14+, C compiler (GCC/Clang/MSVC). Gradle 8.13 is bundled via wrapper.
+JDK 11+, CMake 3.14+, C compiler (GCC/Clang/MSVC). Gradle 8.13 is bundled via wrapper. The libdeflate git submodule must be initialized: `git submodule update --init --recursive`.
 
 ## Testing Guidelines
 
