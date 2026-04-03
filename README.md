@@ -66,6 +66,25 @@ dependencies {
 </dependency>
 ```
 
+## Benchmarking
+
+`libdeflate` is significantly faster than the JDK's zlib based compression, but how much faster can vary significantly by platform.  To test on your platform of choice preare an _uncompressed_ input file representative of the data you'll be working with, then:
+
+```shell
+wget https://github.com/fulcrumgenomics/jlibdeflate/releases/download/v0.1.0/jlibdeflate-0.1.0.jar
+java -Xmx8g -jar jlibdeflate-0.1.0.jar benchmark --input <your input> --level 6 --iterations 3
+```
+
+The following shows the output of benchmarking with a 2.5G input file of genomic data on an Amazon EC2 `M6i.large` instance with `AVX-512` support and an EBS volume with provisioned throughput:
+
+<img alt="Benchmarking results on an M6i.large EC2 instance" src=".github/assets/benchmark-output.png">
+
+The I/O modes represent:
+
+- In-Memory: Compression or decompression is purely in memory and timing does not include any disk IO
+- Read: Timing includes reading the source data from disk prior to compression/decompression
+- Read + Write: Timing includes reading the source data, and writing the result data back to disk
+
 ## Usage
 
 ### Compression
