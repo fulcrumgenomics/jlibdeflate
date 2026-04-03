@@ -26,11 +26,22 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+tasks.withType<JavaCompile> {
+    options.encoding = "UTF-8"
+}
+
 tasks.test {
     useJUnitPlatform()
 }
 
+tasks.jar {
+    manifest {
+        attributes("Main-Class" to "com.fulcrumgenomics.jlibdeflate.Main")
+    }
+}
+
 tasks.javadoc {
+    options.encoding = "UTF-8"
     (options as StandardJavadocDocletOptions).addBooleanOption("Xdoclint:none", true)
 }
 
@@ -88,7 +99,21 @@ val libExtension = when {
 val libName = if (platform.startsWith("win")) "jlibdeflate.$libExtension"
               else "libjlibdeflate.$libExtension"
 
+val checkSubmodule by tasks.registering {
+    description = "Verifies the libdeflate git submodule has been initialized."
+    doFirst {
+        val cmakeLists = file("native/libdeflate/CMakeLists.txt")
+        if (!cmakeLists.exists()) {
+            throw GradleException(
+                "The libdeflate git submodule is not initialized.\n" +
+                "Run: git submodule update --init --recursive"
+            )
+        }
+    }
+}
+
 val cmakeConfigure by tasks.registering(Exec::class) {
+    dependsOn(checkSubmodule)
     inputs.dir("native")
     outputs.dir(cmakeBuildDir)
 
