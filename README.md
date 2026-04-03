@@ -1,5 +1,8 @@
 [![Build](https://github.com/fulcrumgenomics/jlibdeflate/actions/workflows/ci.yml/badge.svg)](https://github.com/fulcrumgenomics/jlibdeflate/actions/workflows/ci.yml)
 [![License](http://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/fulcrumgenomics/jlibdeflate/blob/main/LICENSE)
+[![Maven Central](https://img.shields.io/maven-central/v/com.fulcrumgenomics/jlibdeflate)](https://central.sonatype.com/artifact/com.fulcrumgenomics/jlibdeflate)
+[![Language](https://img.shields.io/badge/language-java-brightgreen.svg)](https://github.com/fulcrumgenomics/jlibdeflate)
+[![Javadoc](https://javadoc.io/badge/com.fulcrumgenomics/jlibdeflate.svg)](https://javadoc.io/doc/com.fulcrumgenomics/jlibdeflate)
 
 # jlibdeflate
 
