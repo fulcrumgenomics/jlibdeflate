@@ -8,7 +8,6 @@ plugins {
 }
 
 group = "com.fulcrumgenomics"
-version = scmVersion.version
 
 java {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -62,7 +61,12 @@ scmVersion {
         versionSeparator.set("") // no separator between prefix and version
     }
     versionIncrementer("incrementPatch")  // default: bump patch for next SNAPSHOT
+    snapshotCreator(pl.allegro.tech.build.axion.release.domain.properties.VersionProperties.Creator { _, position ->
+        "-${position.shortRevision}"
+    })
 }
+
+version = scmVersion.version
 
 // ---------------------------------------------------------------------------
 // Native build task — compiles JNI glue + libdeflate for the current platform
