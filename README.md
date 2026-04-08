@@ -129,6 +129,62 @@ crc32.update(chunk2, 0, chunk2.length);
 long value = crc32.getValue();
 ```
 
+### BGZF Streaming I/O
+
+libdeflate is a whole-buffer compressor/decompressor — it processes an entire block at once rather than streaming through data incrementally.  This makes it unsuitable for reading or writing arbitrary gzip streams.
+
+However, the [BGZF](https://samtools.github.io/hts-specs/SAMv1.pdf) (Blocked GNU Zip Format) format is specifically designed as a series of small, independent gzip members — each at most 64 KB — making it a natural fit for libdeflate's block-at-a-time model.  BGZF is the de facto standard compression format for high-throughput sequencing data in bioinformatics (BAM, CRAM, VCF, BCF, etc.) as defined in the [SAM/BAM format specification](https://samtools.github.io/hts-specs/SAMv1.pdf) maintained by the [hts-specs](https://github.com/samtools/hts-specs) project.
+
+jlibdeflate provides `BgzfOutputStream` and `BgzfInputStream` for streaming BGZF I/O, with full virtual file offset tracking for use with genomic indexes (BAI, CSI, TBI).
+
+> **Important:** `BgzfInputStream` reads only BGZF-formatted data.  It cannot read standard gzip or zlib streams.  Because BGZF files are valid gzip, standard tools like `java.util.zip.GZIPInputStream` and command-line `gzip -d` can read BGZF files, but the reverse is not true — a standard gzip file is a single opaque member that cannot be decomposed into blocks.
+
+#### Writing BGZF
+
+```java
+try (var out = new BgzfOutputStream(new FileOutputStream("output.bam"), 6)) {
+    long offsetBeforeWrite = out.bgzfPosition(); // virtual file offset
+    out.write(record);
+    // ...
+}
+// Stream is automatically closed with EOF marker
+```
+
+#### Reading BGZF
+
+```java
+try (var in = new BgzfInputStream(new FileInputStream("input.bam"))) {
+    long offset = in.bgzfPosition(); // virtual file offset for indexing
+    byte[] buf = new byte[8192];
+    int n;
+    while ((n = in.read(buf)) >= 0) {
+        // process decompressed data
+    }
+}
+```
+
+#### Detecting BGZF vs. Standard Gzip
+
+Use `Bgzf.isBgzf()` to peek at a stream's header, or `Bgzf.newGzipInputStream()` to automatically select the right decompression stream:
+
+```java
+// Automatic: returns BgzfInputStream for BGZF, GZIPInputStream otherwise
+InputStream in = Bgzf.newGzipInputStream(new FileInputStream("input.gz"));
+
+// With a custom fallback for non-BGZF data
+InputStream in = Bgzf.newGzipInputStream(rawStream, rawStream -> {
+    return new GZIPInputStream(rawStream);
+});
+
+// Manual detection (stream must support mark/reset)
+BufferedInputStream buffered = new BufferedInputStream(rawStream);
+if (Bgzf.isBgzf(buffered)) {
+    // BGZF path with virtual offset tracking
+} else {
+    // standard gzip path
+}
+```
+
 ## Thread Safety
 
 `LibdeflateCompressor` and `LibdeflateDecompressor` instances are **not** thread-safe.  Each thread should use its own instance.  Different threads may safely use different instances concurrently.
