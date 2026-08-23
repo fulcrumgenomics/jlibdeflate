@@ -52,7 +52,7 @@ libdeflate automatically detects and uses the best available SIMD instructions a
 
 ```kotlin
 dependencies {
-    implementation("com.fulcrumgenomics:jlibdeflate:0.1.0")
+    implementation("com.fulcrumgenomics:jlibdeflate:0.2.0")
 }
 ```
 
@@ -62,17 +62,17 @@ dependencies {
 <dependency>
     <groupId>com.fulcrumgenomics</groupId>
     <artifactId>jlibdeflate</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
 ## Benchmarking
 
-`libdeflate` is significantly faster than the JDK's zlib based compression, but how much faster can vary significantly by platform.  To test on your platform of choice preare an _uncompressed_ input file representative of the data you'll be working with, then:
+`libdeflate` is significantly faster than the JDK's zlib based compression, but how much faster can vary significantly by platform.  To test on your platform of choice prepare an _uncompressed_ input file representative of the data you'll be working with, then:
 
 ```shell
-wget https://github.com/fulcrumgenomics/jlibdeflate/releases/download/v0.1.0/jlibdeflate-0.1.0.jar
-java -Xmx8g -jar jlibdeflate-0.1.0.jar benchmark --input <your input> --level 6 --iterations 3
+wget https://github.com/fulcrumgenomics/jlibdeflate/releases/download/v0.2.0/jlibdeflate-0.2.0.jar
+java -Xmx8g -jar jlibdeflate-0.2.0.jar benchmark --input <your input> --level 6 --iterations 3
 ```
 
 The following shows the output of benchmarking with a 2.5G input file of genomic data on an Amazon EC2 `M6i.large` instance with `AVX-512` support and an EBS volume with provisioned throughput:
