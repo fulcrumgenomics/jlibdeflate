@@ -178,7 +178,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full build instructions, how to bump 
 
 ## libdeflate Version
 
-This release bundles **libdeflate v1.25**.
+This release bundles **libdeflate v1.26**.
 
 ## License
 
