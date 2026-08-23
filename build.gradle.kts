@@ -174,6 +174,15 @@ tasks.named("sourcesJar") {
     dependsOn(buildNative)
 }
 
+// The built native library is copied into the source tree (so it can be packaged
+// as a resource), which the default `clean` does not touch.  Delete it explicitly
+// so `clean build` always recompiles the native code -- otherwise the onlyIf
+// existence check on buildNative would silently reuse a stale library, e.g. after
+// bumping the libdeflate submodule.
+tasks.named<Delete>("clean") {
+    delete(file("src/main/resources/native"))
+}
+
 // ---------------------------------------------------------------------------
 // Publishing & signing
 // ---------------------------------------------------------------------------
