@@ -144,7 +144,7 @@ Every push to `main` automatically publishes a SNAPSHOT to Sonatype Central's sn
    git push origin v0.2.0
    ```
 3. The [Release workflow](.github/workflows/release.yml) will:
-   - Build native libraries for all 4 platforms (linux-x86_64, linux-aarch64, osx-x86_64, osx-aarch64)
+   - Build native libraries for all 5 platforms (linux-x86_64, linux-aarch64, osx-x86_64, osx-aarch64, windows-x86_64)
    - Assemble a fat JAR containing all native libraries
    - Sign and publish to Maven Central
    - Create a GitHub Release with the JAR attached
