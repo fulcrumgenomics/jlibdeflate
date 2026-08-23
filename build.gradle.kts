@@ -119,10 +119,16 @@ val checkSubmodule by tasks.registering {
 val cmakeConfigure by tasks.registering(Exec::class) {
     dependsOn(checkSubmodule)
     inputs.dir("native")
-    outputs.dir(cmakeBuildDir)
+    // Declare only the cache file as output: buildNative writes object files into
+    // the same directory, which would otherwise mark this task out-of-date on
+    // every build.
+    outputs.file(cmakeBuildDir.map { it.resolve("CMakeCache.txt") })
 
-    // Skip if the native library was already provided (e.g., by CI artifact download)
-    onlyIf { !nativeOutputDir.resolve(libName).exists() }
+    // CI publish jobs download prebuilt native libraries and set
+    // JLIBDEFLATE_SKIP_NATIVE so a local rebuild doesn't overwrite them.
+    // Everywhere else, Gradle's input hashing of native/ (which includes the
+    // libdeflate submodule) decides when a rebuild is needed.
+    onlyIf { System.getenv("JLIBDEFLATE_SKIP_NATIVE") == null }
 
     doFirst { cmakeBuildDir.get().mkdirs() }
 
@@ -146,8 +152,8 @@ val buildNative by tasks.registering(Exec::class) {
     inputs.dir("native")
     outputs.file(nativeOutputDir.resolve(libName))
 
-    // Skip if the native library was already provided (e.g., by CI artifact download)
-    onlyIf { !nativeOutputDir.resolve(libName).exists() }
+    // See cmakeConfigure: skipped only when CI provides prebuilt libraries.
+    onlyIf { System.getenv("JLIBDEFLATE_SKIP_NATIVE") == null }
 
     workingDir = cmakeBuildDir.get()
     commandLine("cmake", "--build", ".", "--config", "Release")
@@ -176,9 +182,7 @@ tasks.named("sourcesJar") {
 
 // The built native library is copied into the source tree (so it can be packaged
 // as a resource), which the default `clean` does not touch.  Delete it explicitly
-// so `clean build` always recompiles the native code -- otherwise the onlyIf
-// existence check on buildNative would silently reuse a stale library, e.g. after
-// bumping the libdeflate submodule.
+// so `clean` removes all build products.
 tasks.named<Delete>("clean") {
     delete(file("src/main/resources/native"))
 }
