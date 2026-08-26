@@ -1,5 +1,6 @@
 package com.fulcrumgenomics.jlibdeflate;
 
+import com.fulcrumgenomics.jlibdeflate.stream.Bgzf;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
@@ -29,72 +30,6 @@ import java.util.zip.Inflater;
  * <p>Usage: {@code java -jar jlibdeflate.jar benchmark --input <file> [--level <0-12>] [--iterations <n>]}
  */
 public class LibdeflateBenchmark {
-
-    /** Size of the BGZF gzip header (standard 10-byte gzip header + 8-byte BGZF extra field). */
-    private static final int BGZF_HEADER_SIZE = 18;
-
-    /** Size of the gzip trailer (CRC32 + ISIZE). */
-    private static final int BGZF_TRAILER_SIZE = 8;
-
-    /** Maximum total size of a single BGZF block (spec limit, fits in 16-bit BSIZE + 1). */
-    private static final int MAX_BGZF_BLOCK_SIZE = 65536;
-
-    /** Maximum compressed payload that fits in a BGZF block. */
-    private static final int MAX_BGZF_CDATA = MAX_BGZF_BLOCK_SIZE - BGZF_HEADER_SIZE - BGZF_TRAILER_SIZE;
-
-    /** Fixed BGZF header bytes — everything except BSIZE at offsets 16-17. */
-    private static final byte[] BGZF_HEADER = {
-        0x1f,
-        (byte) 0x8b, // ID1, ID2
-        0x08, // CM = deflate
-        0x04, // FLG = FEXTRA
-        0x00,
-        0x00,
-        0x00,
-        0x00, // MTIME
-        0x00, // XFL
-        (byte) 0xff, // OS = unknown
-        0x06,
-        0x00, // XLEN = 6 (little-endian)
-        0x42,
-        0x43, // SI1='B', SI2='C'
-        0x02,
-        0x00, // SLEN = 2
-        0x00,
-        0x00 // BSIZE placeholder (filled per block)
-    };
-
-    /** Standard 28-byte BGZF EOF marker (empty BGZF block). */
-    private static final byte[] BGZF_EOF = {
-        0x1f,
-        (byte) 0x8b,
-        0x08,
-        0x04,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        (byte) 0xff,
-        0x06,
-        0x00,
-        0x42,
-        0x43,
-        0x02,
-        0x00,
-        0x1b,
-        0x00,
-        0x03,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00,
-        0x00
-    };
 
     /**
      * Entry point for the benchmark subcommand. Parses command-line options and
@@ -200,7 +135,7 @@ public class LibdeflateBenchmark {
      * Computes the largest uncompressed block size whose worst-case compressed output
      * fits within a BGZF block. Starts at 65536 and decreases in 256-byte steps
      * until {@link LibdeflateCompressor#deflateCompressBound(int)} fits within
-     * {@link #MAX_BGZF_CDATA}.
+     * {@link #Bgzf.MAX_COMPRESSED_DATA}.
      *
      * @param level the compression level to use for bound calculation
      * @return the maximum safe uncompressed block size
@@ -209,7 +144,7 @@ public class LibdeflateBenchmark {
     private static int computeMaxBlockSize(int level) {
         try (var comp = new LibdeflateCompressor(level)) {
             for (int size = 65536; size > 0; size -= 256) {
-                if (comp.deflateCompressBound(size) <= MAX_BGZF_CDATA) {
+                if (comp.deflateCompressBound(size) <= Bgzf.MAX_COMPRESSED_DATA) {
                     return size;
                 }
             }
@@ -432,7 +367,7 @@ public class LibdeflateBenchmark {
                 byte[] cdata = comp.deflateCompress(block);
                 writeBgzfBlock(out, cdata, block, crc32);
             }
-            out.write(BGZF_EOF);
+            out.write(Bgzf.EOF_MARKER);
         }
     }
 
@@ -449,10 +384,10 @@ public class LibdeflateBenchmark {
      */
     private static void writeBgzfBlock(OutputStream out, byte[] cdata, byte[] uncompressed, CRC32 crc32)
             throws IOException {
-        int blockSize = BGZF_HEADER_SIZE + cdata.length + BGZF_TRAILER_SIZE;
+        int blockSize = Bgzf.HEADER_SIZE + cdata.length + Bgzf.TRAILER_SIZE;
         int bsize = blockSize - 1;
 
-        byte[] header = BGZF_HEADER.clone();
+        byte[] header = Bgzf.HEADER_TEMPLATE.clone();
         header[16] = (byte) (bsize & 0xff);
         header[17] = (byte) ((bsize >>> 8) & 0xff);
         out.write(header);
@@ -486,22 +421,22 @@ public class LibdeflateBenchmark {
      */
     private static List<CompressedBlock> readCompressedBlocks(Path path) throws IOException {
         List<CompressedBlock> blocks = new ArrayList<>();
-        try (var in = new BufferedInputStream(new FileInputStream(path.toFile()), MAX_BGZF_BLOCK_SIZE * 4)) {
-            byte[] header = new byte[BGZF_HEADER_SIZE];
+        try (var in = new BufferedInputStream(new FileInputStream(path.toFile()), Bgzf.MAX_BLOCK_SIZE * 4)) {
+            byte[] header = new byte[Bgzf.HEADER_SIZE];
             while (true) {
                 int headerRead = readFully(in, header);
                 if (headerRead == 0) break;
-                if (headerRead < BGZF_HEADER_SIZE) {
+                if (headerRead < Bgzf.HEADER_SIZE) {
                     throw new IOException("Truncated BGZF header");
                 }
 
                 int bsize = (header[16] & 0xff) | ((header[17] & 0xff) << 8);
                 int blockSize = bsize + 1;
-                int cdataLen = blockSize - BGZF_HEADER_SIZE - BGZF_TRAILER_SIZE;
+                int cdataLen = blockSize - Bgzf.HEADER_SIZE - Bgzf.TRAILER_SIZE;
 
                 if (cdataLen <= 0) {
                     // EOF marker or empty block — consume remaining bytes and stop
-                    byte[] trailer = new byte[BGZF_TRAILER_SIZE + cdataLen];
+                    byte[] trailer = new byte[Bgzf.TRAILER_SIZE + cdataLen];
                     readFully(in, trailer);
                     break;
                 }
@@ -511,8 +446,8 @@ public class LibdeflateBenchmark {
                     throw new IOException("Truncated BGZF compressed data");
                 }
 
-                byte[] trailer = new byte[BGZF_TRAILER_SIZE];
-                if (readFully(in, trailer) < BGZF_TRAILER_SIZE) {
+                byte[] trailer = new byte[Bgzf.TRAILER_SIZE];
+                if (readFully(in, trailer) < Bgzf.TRAILER_SIZE) {
                     throw new IOException("Truncated BGZF trailer");
                 }
                 int isize = (trailer[4] & 0xff)
@@ -665,7 +600,7 @@ public class LibdeflateBenchmark {
      */
     private static double benchmarkCompressionInMemory(
             List<byte[]> blocks, int iterations, long totalUncompressedBytes, BlockCompressor compressor) {
-        byte[] outputBuf = new byte[MAX_BGZF_CDATA];
+        byte[] outputBuf = new byte[Bgzf.MAX_COMPRESSED_DATA];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
@@ -693,7 +628,7 @@ public class LibdeflateBenchmark {
     private static double benchmarkCompressionReadIO(
             Path inputFile, int blockSize, int iterations, long totalUncompressedBytes, BlockCompressor compressor)
             throws IOException {
-        byte[] outputBuf = new byte[MAX_BGZF_CDATA];
+        byte[] outputBuf = new byte[Bgzf.MAX_COMPRESSED_DATA];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
@@ -728,7 +663,7 @@ public class LibdeflateBenchmark {
             long totalUncompressedBytes,
             BlockCompressor compressor)
             throws IOException {
-        byte[] outputBuf = new byte[MAX_BGZF_CDATA];
+        byte[] outputBuf = new byte[Bgzf.MAX_COMPRESSED_DATA];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
@@ -759,7 +694,7 @@ public class LibdeflateBenchmark {
      */
     private static double benchmarkDecompressionInMemory(
             List<CompressedBlock> blocks, int iterations, long totalUncompressedBytes, BlockDecompressor decompressor) {
-        byte[] outputBuf = new byte[MAX_BGZF_BLOCK_SIZE];
+        byte[] outputBuf = new byte[Bgzf.MAX_BLOCK_SIZE];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
@@ -786,7 +721,7 @@ public class LibdeflateBenchmark {
     private static double benchmarkDecompressionReadIO(
             Path compressedFile, int iterations, long totalUncompressedBytes, BlockDecompressor decompressor)
             throws IOException {
-        byte[] outputBuf = new byte[MAX_BGZF_BLOCK_SIZE];
+        byte[] outputBuf = new byte[Bgzf.MAX_BLOCK_SIZE];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
@@ -819,7 +754,7 @@ public class LibdeflateBenchmark {
             long totalUncompressedBytes,
             BlockDecompressor decompressor)
             throws IOException {
-        byte[] outputBuf = new byte[MAX_BGZF_BLOCK_SIZE];
+        byte[] outputBuf = new byte[Bgzf.MAX_BLOCK_SIZE];
 
         long startNanos = System.nanoTime();
         for (int i = 0; i < iterations; i++) {
